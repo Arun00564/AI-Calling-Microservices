@@ -6,6 +6,10 @@ from app.db.models.voice_call_logs import VoiceCallLog
 from app.db.models.plivo_webhook_event import PlivoWebhookEvent
 from app.db.models.voice_agent_field import VoiceAgentField
 from app.db.models.provider_webhook import ProviderWebhook
+from app.db.models.customer_list import (
+    CustomerList,
+    CustomerListContact,
+)
 
 __all__ = [
     "UserDetails",
@@ -16,4 +20,6 @@ __all__ = [
     "PlivoWebhookEvent",
     "VoiceAgentField",
     "ProviderWebhook",
+    "CustomerList",
+    "CustomerListContact",
 ]

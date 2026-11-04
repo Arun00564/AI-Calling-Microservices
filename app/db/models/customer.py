@@ -91,5 +91,11 @@ class Customer(Base):
         back_populates="customer",
     )
 
+    customer_list_associations = relationship(
+        "CustomerListContact",
+        back_populates="customer",
+        cascade="all, delete-orphan",
+    )
+
     def __repr__(self) -> str:
         return f"<Customer(id={self.id}, full_name={self.full_name}, mobile_number={self.mobile_number})>"
