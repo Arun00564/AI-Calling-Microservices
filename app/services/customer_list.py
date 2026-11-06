@@ -4,11 +4,12 @@ import re
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.customer import Customer
 from app.db.models.customer_list import CustomerList, CustomerListContact
+from app.db.models.voice_call_logs import VoiceCallLog
 
 logger = logging.getLogger(__name__)
 
@@ -431,6 +432,348 @@ class CustomerListService:
 
         return {
             "items": customer_lists,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_records": total_records,
+                "total_pages": (
+                    (total_records + page_size - 1) // page_size if total_records else 0
+                ),
+            },
+        }
+
+    async def get_customer_list_contacts(
+        self,
+        list_id: int,
+        page: int = 1,
+        page_size: int = 10,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> dict:
+
+        # 1. Verify that the list belongs to the logged-in user
+        list_result = await self.db.execute(
+            select(CustomerList).where(
+                CustomerList.id == list_id,
+                CustomerList.user_id == self.current_user.id,
+            )
+        )
+
+        customer_list = list_result.scalar_one_or_none()
+
+        if not customer_list:
+            raise ValueError("Customer list not found.")
+
+        # 2. Build contact filters
+        filters = [
+            CustomerListContact.customer_list_id == list_id,
+            Customer.user_id == self.current_user.id,
+            Customer.deleted_at.is_(None),
+        ]
+
+        if search:
+            search_term = f"%{search.strip()}%"
+
+            filters.append(
+                or_(
+                    Customer.full_name.ilike(search_term),
+                    Customer.mobile_number.ilike(search_term),
+                    Customer.email.ilike(search_term),
+                )
+            )
+
+        if status:
+            filters.append(Customer.status == status.upper())
+
+        # 3. Get total matching contacts
+        count_result = await self.db.execute(
+            select(func.count(CustomerListContact.id))
+            .join(
+                Customer,
+                Customer.id == CustomerListContact.customer_id,
+            )
+            .where(*filters)
+        )
+
+        total_records = count_result.scalar_one()
+
+        # 4. Calculate pagination
+        offset = (page - 1) * page_size
+
+        # 5. Fetch contacts
+        result = await self.db.execute(
+            select(Customer, CustomerListContact.created_at)
+            .join(
+                CustomerListContact,
+                CustomerListContact.customer_id == Customer.id,
+            )
+            .where(*filters)
+            .order_by(desc(CustomerListContact.created_at))
+            .offset(offset)
+            .limit(page_size)
+        )
+
+        rows = result.all()
+
+        contacts = []
+
+        for customer, added_at in rows:
+            contacts.append(
+                {
+                    "id": customer.id,
+                    "full_name": customer.full_name,
+                    "email": customer.email,
+                    "country_code": customer.country_code,
+                    "mobile_number": customer.mobile_number,
+                    "status": customer.status,
+                    "created_at": customer.created_at,
+                    "added_to_list_at": added_at,
+                }
+            )
+
+        # 6. Return response
+        return {
+            "customer_list": {
+                "id": customer_list.id,
+                "name": customer_list.name,
+                "source": customer_list.source,
+                "total_contacts": total_records,
+            },
+            "contacts": contacts,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_records": total_records,
+                "total_pages": (
+                    (total_records + page_size - 1) // page_size if total_records else 0
+                ),
+            },
+        }
+
+    async def get_all_contacts(
+        self,
+        page: int = 1,
+        page_size: int = 10,
+        search: str | None = None,
+        status: str | None = None,
+        call_status: str | None = None,
+    ):
+        # Only contacts belonging to the logged-in user
+        filters = [
+            Customer.user_id == self.current_user.id,
+            Customer.deleted_at.is_(None),
+        ]
+
+        if status:
+            filters.append(Customer.status == status.upper())
+
+        if search:
+            term = f"%{search.strip()}%"
+            filters.append(
+                or_(
+                    Customer.full_name.ilike(term),
+                    Customer.mobile_number.ilike(term),
+                    Customer.email.ilike(term),
+                    CustomerList.name.ilike(term),
+                )
+            )
+
+        # Latest call for each customer
+        latest_call_status = (
+            select(VoiceCallLog.call_status)
+            .where(VoiceCallLog.customer_id == Customer.id)
+            .order_by(desc(VoiceCallLog.created_at), desc(VoiceCallLog.id))
+            .limit(1)
+            .correlate(Customer)
+            .scalar_subquery()
+        )
+
+        total_calls_subquery = (
+            select(func.count(VoiceCallLog.id))
+            .where(
+                VoiceCallLog.customer_id == Customer.id,
+                VoiceCallLog.user_id == self.current_user.id,
+            )
+            .correlate(Customer)
+            .scalar_subquery()
+        )
+
+        latest_call_at = (
+            select(VoiceCallLog.created_at)
+            .where(VoiceCallLog.customer_id == Customer.id)
+            .order_by(desc(VoiceCallLog.created_at), desc(VoiceCallLog.id))
+            .limit(1)
+            .correlate(Customer)
+            .scalar_subquery()
+        )
+
+        query = (
+            select(
+                Customer,
+                latest_call_status.label("latest_call_status"),
+                latest_call_at.label("last_called_at"),
+                total_calls_subquery.label("total_calls"),
+            )
+            .outerjoin(
+                CustomerListContact,
+                CustomerListContact.customer_id == Customer.id,
+            )
+            .outerjoin(
+                CustomerList,
+                CustomerList.id == CustomerListContact.customer_list_id,
+            )
+            .where(*filters)
+            .distinct()
+        )
+
+        if call_status:
+            query = query.where(latest_call_status == call_status.lower())
+
+        # Count unique matching customers
+        count_query = (
+            select(func.count(func.distinct(Customer.id)))
+            .outerjoin(
+                CustomerListContact,
+                CustomerListContact.customer_id == Customer.id,
+            )
+            .outerjoin(
+                CustomerList,
+                CustomerList.id == CustomerListContact.customer_list_id,
+            )
+            .where(*filters)
+        )
+
+        if call_status:
+            count_query = count_query.where(latest_call_status == call_status.lower())
+
+        total_result = await self.db.execute(count_query)
+        total_records = total_result.scalar_one()
+
+        offset = (page - 1) * page_size
+
+        result = await self.db.execute(
+            query.order_by(desc(Customer.created_at)).offset(offset).limit(page_size)
+        )
+
+        rows = result.all()
+
+        customer_ids = [row[0].id for row in rows]
+
+        # Fetch all list names for the customers on this page
+        list_names_by_customer = {}
+
+        if customer_ids:
+            list_result = await self.db.execute(
+                select(
+                    CustomerListContact.customer_id,
+                    CustomerList.name,
+                )
+                .join(
+                    CustomerList,
+                    CustomerList.id == CustomerListContact.customer_list_id,
+                )
+                .where(
+                    CustomerListContact.customer_id.in_(customer_ids),
+                    CustomerList.user_id == self.current_user.id,
+                )
+            )
+
+            for customer_id, list_name in list_result.all():
+                list_names_by_customer.setdefault(customer_id, []).append(list_name)
+
+        contacts = []
+
+        for customer, latest_status, last_called_at, total_calls in rows:
+            contacts.append(
+                {
+                    "id": customer.id,
+                    "full_name": customer.full_name,
+                    "email": customer.email,
+                    "country_code": customer.country_code,
+                    "mobile_number": customer.mobile_number,
+                    "total_calls": total_calls or 0,
+                    "contact_status": customer.status,
+                    "lists": list_names_by_customer.get(customer.id, []),
+                    "last_called_at": last_called_at,
+                    "last_call_status": latest_status,
+                }
+            )
+
+        return {
+            "contacts": contacts,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_records": total_records,
+                "total_pages": (
+                    (total_records + page_size - 1) // page_size if total_records else 0
+                ),
+            },
+        }
+
+    async def get_customer_call_history(
+        self,
+        customer_id: int,
+        page: int = 1,
+        page_size: int = 10,
+    ):
+        customer_result = await self.db.execute(
+            select(Customer).where(
+                Customer.id == customer_id,
+                Customer.user_id == self.current_user.id,
+                Customer.deleted_at.is_(None),
+            )
+        )
+        customer = customer_result.scalar_one_or_none()
+
+        if not customer:
+            raise ValueError("Customer not found.")
+
+        filters = [
+            VoiceCallLog.customer_id == customer_id,
+            VoiceCallLog.user_id == self.current_user.id,
+        ]
+
+        count_result = await self.db.execute(
+            select(func.count(VoiceCallLog.id)).where(*filters)
+        )
+        total_records = count_result.scalar_one()
+
+        result = await self.db.execute(
+            select(VoiceCallLog)
+            .where(*filters)
+            .order_by(
+                desc(VoiceCallLog.created_at),
+                desc(VoiceCallLog.id),
+            )
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+
+        call_logs = result.scalars().all()
+
+        return {
+            "customer": {
+                "id": customer.id,
+                "full_name": customer.full_name,
+                "mobile_number": customer.mobile_number,
+                "country_code": customer.country_code,
+            },
+            "call_history": [
+                {
+                    "id": call.id,
+                    "provider": call.provider,
+                    "provider_call_id": call.provider_call_id,
+                    "call_status": call.call_status,
+                    "call_duration": call.call_duration,
+                    "direction": call.direction,
+                    "recording_url": call.recording_url,
+                    "transcription": call.transcription,
+                    "conversation_summary": call.conversation_summary,
+                    "created_at": call.created_at,
+                }
+                for call in call_logs
+            ],
             "pagination": {
                 "page": page,
                 "page_size": page_size,

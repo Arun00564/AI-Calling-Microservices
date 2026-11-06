@@ -52,6 +52,12 @@ class VoiceCallLog(Base):
         index=True,
     )
 
+    customer_list_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customer_lists.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # =========================================================
     # Plivo IDs
     # =========================================================

@@ -171,3 +171,98 @@ async def get_customer_lists(
         "message": "Customer lists fetched successfully.",
         "data": result,
     }
+
+
+@router.get("/{list_id}/contacts")
+async def get_customer_list_contacts(
+    list_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: str | None = Query(None),
+    status: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: UserDetails = Depends(get_current_user),
+):
+
+    service = CustomerListService(
+        db=db,
+        current_user=current_user,
+    )
+
+    try:
+        result = await service.get_customer_list_contacts(
+            list_id=list_id,
+            page=page,
+            page_size=page_size,
+            search=search,
+            status=status,
+        )
+
+        return {
+            "status": 200,
+            "success": True,
+            "message": "Customer list contacts fetched successfully.",
+            "data": result,
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+
+
+@router.get("/contacts/all")
+async def get_all_contacts(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    search: str | None = Query(None),
+    status: str | None = Query(None),
+    call_status: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: UserDetails = Depends(get_current_user),
+):
+    service = CustomerListService(db=db, current_user=current_user)
+
+    result = await service.get_all_contacts(
+        page=page,
+        page_size=page_size,
+        search=search,
+        status=status,
+        call_status=call_status,
+    )
+
+    return {
+        "status": 200,
+        "success": True,
+        "message": "Contacts fetched successfully.",
+        "data": result,
+    }
+
+
+@router.get("/contacts/{customer_id}/call-history")
+async def get_customer_call_history(
+    customer_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: UserDetails = Depends(get_current_user),
+):
+    service = CustomerListService(db=db, current_user=current_user)
+
+    try:
+        result = await service.get_customer_call_history(
+            customer_id=customer_id,
+            page=page,
+            page_size=page_size,
+        )
+
+        return {
+            "status": 200,
+            "success": True,
+            "message": "Customer call history fetched successfully.",
+            "data": result,
+        }
+
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))

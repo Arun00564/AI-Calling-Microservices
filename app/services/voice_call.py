@@ -186,6 +186,39 @@ class VoiceCallService:
                 },
             )
 
+    # def normalize_phone_number(
+    #     self,
+    #     call_data: dict[str, Any],
+    # ) -> str:
+
+    #     country_code = str(call_data.get("country_code", "")).strip()
+
+    #     phone_number = str(call_data.get("phone_number", "")).strip()
+
+    #     country_code = "".join(filter(str.isdigit, country_code))
+
+    #     phone_number = "".join(filter(str.isdigit, phone_number))
+
+    #     if not country_code:
+    #         raise HTTPException(
+    #             status_code=status.HTTP_400_BAD_REQUEST,
+    #             detail="Country code is required.",
+    #         )
+
+    #     if not phone_number:
+    #         raise HTTPException(
+    #             status_code=status.HTTP_400_BAD_REQUEST,
+    #             detail="Phone number is required.",
+    #         )
+
+    #     # Remove country code if already present
+    #     if phone_number.startswith(country_code):
+    #         phone_number = phone_number[len(country_code) :]
+
+    #     full_phone_number = f"+{country_code}{phone_number}"
+
+    #     return full_phone_number
+
     def normalize_phone_number(
         self,
         call_data: dict[str, Any],
@@ -196,7 +229,6 @@ class VoiceCallService:
         phone_number = str(call_data.get("phone_number", "")).strip()
 
         country_code = "".join(filter(str.isdigit, country_code))
-
         phone_number = "".join(filter(str.isdigit, phone_number))
 
         if not country_code:
@@ -211,9 +243,11 @@ class VoiceCallService:
                 detail="Phone number is required.",
             )
 
-        # Remove country code if already present
+        # Remove country code only when the number is longer
+        # than a local number and already contains the country code.
         if phone_number.startswith(country_code):
-            phone_number = phone_number[len(country_code) :]
+            if len(phone_number) > 10:
+                phone_number = phone_number[len(country_code) :]
 
         full_phone_number = f"+{country_code}{phone_number}"
 
@@ -225,10 +259,12 @@ class VoiceCallService:
         full_phone_number: str,
     ) -> Customer:
 
-        lead_name = call_data.get(
-            "lead_name",
-            "",
-        )
+        # lead_name = call_data.get(
+        #     "lead_name",
+        #     "",
+        # )
+
+        lead_name = call_data.get("customer_name") or call_data.get("full_name") or ""
 
         email = call_data.get("email")
 
