@@ -10,6 +10,9 @@ from app.db.models.customer_list import (
     CustomerList,
     CustomerListContact,
 )
+from app.db.models.campaign import Campaign
+from app.db.models.campaign_contact import CampaignContact
+from app.db.models.voice_call_queue import VoiceCallQueue
 
 __all__ = [
     "UserDetails",
@@ -22,4 +25,7 @@ __all__ = [
     "ProviderWebhook",
     "CustomerList",
     "CustomerListContact",
+    "Campaign",
+    "CampaignContact",
+    "VoiceCallQueue",
 ]

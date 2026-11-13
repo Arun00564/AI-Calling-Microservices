@@ -156,5 +156,10 @@ class VoiceAgent(Base):
         cascade="all, delete-orphan",
     )
 
+    campaigns = relationship(
+        "Campaign",
+        back_populates="voice_agent",
+    )
+
     def __repr__(self) -> str:
         return f"<VoiceAgent(id={self.id}, name={self.name}, user_id={self.user_id})>"

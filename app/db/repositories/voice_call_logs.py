@@ -2,7 +2,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.voice_call import VoiceCallLog
+from app.db.models.voice_call_logs import VoiceCallLog
 
 
 class VoiceCallRepository:

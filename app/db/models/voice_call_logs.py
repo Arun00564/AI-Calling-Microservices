@@ -46,7 +46,7 @@ class VoiceCallLog(Base):
         index=True,
     )
 
-    voice_agent_id: Mapped[int] = mapped_column(
+    voice_agent_id: Mapped[int | None] = mapped_column(
         ForeignKey("voice_agents.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -54,6 +54,12 @@ class VoiceCallLog(Base):
 
     customer_list_id: Mapped[int | None] = mapped_column(
         ForeignKey("customer_lists.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    campaign_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campaigns.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
@@ -273,6 +279,11 @@ class VoiceCallLog(Base):
 
     from_number = relationship(
         "VoiceNumber",
+        back_populates="voice_calls",
+    )
+
+    campaign = relationship(
+        "Campaign",
         back_populates="voice_calls",
     )
 

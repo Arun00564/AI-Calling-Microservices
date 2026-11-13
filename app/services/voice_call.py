@@ -340,6 +340,8 @@ class VoiceCallService:
         feature_id: str,
         knowledge_base_id: int | None = None,
         context: str | None = None,
+        campaign_id: int | None = None,
+        customer_list_id: int | None = None,
     ) -> dict[str, Any]:
 
         if not organisation_id:
@@ -652,6 +654,8 @@ class VoiceCallService:
             call_status=("queued" if provider == "voizematic" else "initiated"),
             call_variables=call_data,
             raw_event_data=(response_json if provider == "voizematic" else None),
+            campaign_id=campaign_id,
+            customer_list_id=customer_list_id,
         )
 
         self.db.add(call_log)

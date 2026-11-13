@@ -78,5 +78,11 @@ class UserDetails(Base):
         back_populates="user_details",
     )
 
+    campaigns = relationship(
+        "Campaign",
+        back_populates="user_details",
+        cascade="all, delete-orphan",
+    )
+
     def __repr__(self) -> str:
         return f"<UserDetails(id={self.id}, user={self.first_name} {self.last_name}, email={self.email})>"

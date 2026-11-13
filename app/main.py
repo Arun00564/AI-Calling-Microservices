@@ -10,6 +10,7 @@ from app.api.routes.bolna_webhook_test import router
 from app.api.routes.phone_numbers import router as phone_numbers_router
 from app.api.routes.webhooks import router as webhooks_router
 from app.api.routes.customer_lists import router as customer_lists
+from app.api.routes.campaigns import router as campaigns_router
 
 
 import logging
@@ -34,6 +35,7 @@ app.include_router(router)
 app.include_router(phone_numbers_router)
 app.include_router(webhooks_router)
 app.include_router(customer_lists)
+app.include_router(campaigns_router)
 
 
 @app.get("/health")

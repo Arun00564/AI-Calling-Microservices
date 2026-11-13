@@ -97,5 +97,11 @@ class Customer(Base):
         cascade="all, delete-orphan",
     )
 
+    campaign_associations = relationship(
+        "CampaignContact",
+        back_populates="customer",
+        cascade="all, delete-orphan",
+    )
+
     def __repr__(self) -> str:
         return f"<Customer(id={self.id}, full_name={self.full_name}, mobile_number={self.mobile_number})>"

@@ -89,6 +89,11 @@ class CustomerList(Base):
         cascade="all, delete-orphan",
     )
 
+    campaigns = relationship(
+        "Campaign",
+        back_populates="customer_list",
+    )
+
 
 class CustomerListContact(Base):
     __tablename__ = "customer_list_contacts"
