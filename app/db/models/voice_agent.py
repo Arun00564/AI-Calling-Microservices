@@ -161,5 +161,10 @@ class VoiceAgent(Base):
         back_populates="voice_agent",
     )
 
+    voice_call_queue = relationship(
+        "VoiceCallQueue",
+        back_populates="voice_agent",
+    )
+
     def __repr__(self) -> str:
         return f"<VoiceAgent(id={self.id}, name={self.name}, user_id={self.user_id})>"

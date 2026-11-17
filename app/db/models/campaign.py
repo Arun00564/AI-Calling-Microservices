@@ -153,3 +153,8 @@ class Campaign(Base):
         "VoiceCallLog",
         back_populates="campaign",
     )
+
+    voice_call_queue = relationship(
+        "VoiceCallQueue",
+        back_populates="campaign",
+    )

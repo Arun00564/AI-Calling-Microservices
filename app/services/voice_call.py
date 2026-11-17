@@ -342,6 +342,7 @@ class VoiceCallService:
         context: str | None = None,
         campaign_id: int | None = None,
         customer_list_id: int | None = None,
+        use_previous_call_data: bool = False,
     ) -> dict[str, Any]:
 
         if not organisation_id:
@@ -376,8 +377,7 @@ class VoiceCallService:
         # 2. Previous Call Data
         # -----------------------------------------
 
-        if customer_id:
-
+        if customer_id and use_previous_call_data:
             call_data = await self.get_previous_call_data(customer_id)
 
         # -----------------------------------------

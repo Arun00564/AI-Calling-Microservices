@@ -94,6 +94,11 @@ class CustomerList(Base):
         back_populates="customer_list",
     )
 
+    voice_call_queue = relationship(
+        "VoiceCallQueue",
+        back_populates="customer_list",
+    )
+
 
 class CustomerListContact(Base):
     __tablename__ = "customer_list_contacts"

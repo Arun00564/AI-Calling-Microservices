@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any
 
@@ -77,6 +79,21 @@ class VoiceCallQueue(Base):
 
     customer_list_id: Mapped[int | None] = mapped_column(
         ForeignKey("customer_lists.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    organisation_id: Mapped[str] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+
+    product_id: Mapped[str] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+
+    feature_id: Mapped[str] = mapped_column(
+        String(100),
         nullable=True,
     )
 
@@ -198,4 +215,8 @@ class VoiceCallQueue(Base):
 
     customer_list = relationship("CustomerList", back_populates="voice_call_queue")
 
-    voice_call_log = relationship("VoiceCallLog", back_populates="voice_call_queue")
+    # voice_call_log = relationship("VoiceCallLog", back_populates="voice_call_queue")
+    voice_calls: Mapped["VoiceCallLog | None"] = relationship(
+        "VoiceCallLog",
+        back_populates="voice_call_queue",
+    )

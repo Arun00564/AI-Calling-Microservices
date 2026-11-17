@@ -30,6 +30,7 @@
 
 
 from sqlalchemy import create_engine
+from sqlalchemy.pool import NullPool
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -88,5 +89,23 @@ SyncSessionLocal = sessionmaker(
     bind=sync_engine,
     autoflush=False,
     autocommit=False,
+    expire_on_commit=False,
+)
+
+
+# =========================================================
+# CELERY ASYNC DATABASE
+# Used by Celery tasks that use asyncio.run()
+# =========================================================
+
+celery_async_engine = create_async_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,
+    poolclass=NullPool,
+)
+
+CeleryAsyncSessionLocal = async_sessionmaker(
+    bind=celery_async_engine,
+    class_=AsyncSession,
     expire_on_commit=False,
 )

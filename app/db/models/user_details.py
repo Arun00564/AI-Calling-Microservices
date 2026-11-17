@@ -84,5 +84,10 @@ class UserDetails(Base):
         cascade="all, delete-orphan",
     )
 
+    voice_call_queue = relationship(
+        "VoiceCallQueue",
+        back_populates="user_details",
+    )
+
     def __repr__(self) -> str:
         return f"<UserDetails(id={self.id}, user={self.first_name} {self.last_name}, email={self.email})>"

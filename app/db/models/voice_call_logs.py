@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from uuid import UUID
 from sqlalchemy import UUID
 
@@ -13,7 +15,9 @@ from sqlalchemy import (
     Text,
     func,
 )
+
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.db.models.voice_call_queue import VoiceCallQueue
 
 from app.db.database import Base
 
@@ -284,6 +288,16 @@ class VoiceCallLog(Base):
 
     campaign = relationship(
         "Campaign",
+        back_populates="voice_calls",
+    )
+
+    # voice_call_queue = relationship(
+    #     "VoiceCallQueue",
+    #     back_populates="voice_calls",
+    # )
+
+    voice_call_queue: Mapped[list["VoiceCallQueue"]] = relationship(
+        "VoiceCallQueue",
         back_populates="voice_calls",
     )
 

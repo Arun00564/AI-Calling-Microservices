@@ -91,6 +91,11 @@ class Customer(Base):
         back_populates="customer",
     )
 
+    voice_call_queue = relationship(
+        "VoiceCallQueue",
+        back_populates="customer",
+    )
+
     customer_list_associations = relationship(
         "CustomerListContact",
         back_populates="customer",
