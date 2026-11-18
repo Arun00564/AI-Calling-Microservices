@@ -69,6 +69,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.voice_call_logs import VoiceCallLog
 
+from app.tasks.campaign_tasks import sync_campaign_call_status
+
 logger = logging.getLogger(__name__)
 
 
@@ -618,6 +620,11 @@ class VoizematicWebhookService:
 
         await self.db.commit()
 
+        sync_campaign_call_status.delay(
+            call_log_id=call_log.id,
+            final_status="completed",
+        )
+
         logger.info(
             "Voizematic call.ended saved successfully. "
             "CallLog ID: %s, Call ID: %s, Status: %s, Duration: %s",
@@ -672,6 +679,11 @@ class VoizematicWebhookService:
         call_log.webhook_payload = payload
 
         await self.db.commit()
+
+        sync_campaign_call_status.delay(
+            call_log_id=call_log.id,
+            final_status="failed",
+        )
 
         logger.info(
             "Voizematic call.failed saved successfully. "

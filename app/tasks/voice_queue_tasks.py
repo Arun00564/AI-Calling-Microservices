@@ -49,22 +49,52 @@ async def _claim_pending_queue_records() -> list[int]:
         return queue_ids
 
 
+# @shared_task(name="app.tasks.voice_queue_tasks.process_voice_call_queue")
+# def process_voice_call_queue():
+#     """Find pending records and dispatch individual call tasks."""
+
+#     queue_ids = asyncio.run(_claim_pending_queue_records())
+
+#     dispatched = []
+
+#     for queue_id in queue_ids:
+#         try:
+#             initiate_queued_voice_call.delay(queue_id)
+#             dispatched.append(queue_id)
+
+#         except Exception:
+#             # If Celery cannot enqueue the task, release the record.
+#             asyncio.run(_release_queue_record(queue_id))
+
+#     return {
+#         "claimed": len(queue_ids),
+#         "dispatched": dispatched,
+#     }
+
+
 @shared_task(name="app.tasks.voice_queue_tasks.process_voice_call_queue")
 def process_voice_call_queue():
-    """Find pending records and dispatch individual call tasks."""
+    print("QUEUE DISPATCHER STARTED")
 
     queue_ids = asyncio.run(_claim_pending_queue_records())
+
+    print("CLAIMED QUEUE IDS:", queue_ids)
 
     dispatched = []
 
     for queue_id in queue_ids:
         try:
-            initiate_queued_voice_call.delay(queue_id)
+            task = initiate_queued_voice_call.delay(queue_id)
+
+            print(f"CALL TASK DISPATCHED: queue_id={queue_id}, " f"task_id={task.id}")
+
             dispatched.append(queue_id)
 
-        except Exception:
-            # If Celery cannot enqueue the task, release the record.
+        except Exception as exc:
+            print("TASK DISPATCH ERROR:", str(exc))
             asyncio.run(_release_queue_record(queue_id))
+
+    print("DISPATCHER FINISHED:", dispatched)
 
     return {
         "claimed": len(queue_ids),

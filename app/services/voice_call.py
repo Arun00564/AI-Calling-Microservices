@@ -264,9 +264,17 @@ class VoiceCallService:
         #     "",
         # )
 
-        lead_name = call_data.get("customer_name") or call_data.get("full_name") or ""
+        # lead_name = call_data.get("customer_name") or call_data.get("full_name") or ""
+        lead_name = (
+            call_data.get("lead_name")
+            or call_data.get("customer_name")
+            or call_data.get("full_name")
+            or ""
+        )
 
         email = call_data.get("email")
+
+        country_code = call_data.get("country_code")
 
         result = await self.db.execute(
             select(Customer).where(
@@ -279,10 +287,19 @@ class VoiceCallService:
 
         if customer is None:
 
+            # customer = Customer(
+            #     user_id=self.current_user.id,
+            #     full_name=lead_name,
+            #     email=email,
+            #     mobile_number=full_phone_number,
+            #     status="ACTIVE",
+            # )
+
             customer = Customer(
                 user_id=self.current_user.id,
                 full_name=lead_name,
                 email=email,
+                country_code=country_code,
                 mobile_number=full_phone_number,
                 status="ACTIVE",
             )
@@ -335,9 +352,9 @@ class VoiceCallService:
         agent_id: int,
         customer_id: int | None,
         call_data: dict[str, Any],
-        organisation_id: str,
-        product_id: str,
-        feature_id: str,
+        organisation_id: str | None = None,
+        product_id: str | None = None,
+        feature_id: str | None = None,
         knowledge_base_id: int | None = None,
         context: str | None = None,
         campaign_id: int | None = None,
@@ -345,26 +362,26 @@ class VoiceCallService:
         use_previous_call_data: bool = False,
     ) -> dict[str, Any]:
 
-        if not organisation_id:
-            return {
-                "success": False,
-                "status": 400,
-                "message": "organisation_id is required.",
-            }
+        # if not organisation_id:
+        #     return {
+        #         "success": False,
+        #         "status": 400,
+        #         "message": "organisation_id is required.",
+        #     }
 
-        if not product_id:
-            return {
-                "success": False,
-                "status": 400,
-                "message": "product_id is required.",
-            }
+        # if not product_id:
+        #     return {
+        #         "success": False,
+        #         "status": 400,
+        #         "message": "product_id is required.",
+        #     }
 
-        if not feature_id:
-            return {
-                "success": False,
-                "status": 400,
-                "message": "feature_id is required.",
-            }
+        # if not feature_id:
+        #     return {
+        #         "success": False,
+        #         "status": 400,
+        #         "message": "feature_id is required.",
+        #     }
 
         # -----------------------------------------
         # 1. Get Agent
@@ -428,10 +445,37 @@ class VoiceCallService:
         # 5. Customer
         # -----------------------------------------
 
-        customer = await self.get_or_create_customer(
-            call_data,
-            full_phone_number,
-        )
+        # customer = await self.get_or_create_customer(
+        #     call_data,
+        #     full_phone_number,
+        # )
+
+        if customer_id is not None:
+            # Campaign / existing customer call:
+            # Always use the existing customer record.
+            result = await self.db.execute(
+                select(Customer).where(
+                    Customer.id == customer_id,
+                    Customer.user_id == self.current_user.id,
+                    Customer.deleted_at.is_(None),
+                )
+            )
+
+            customer = result.scalar_one_or_none()
+
+            if customer is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Customer not found.",
+                )
+
+        else:
+            # Quick call without an existing customer:
+            # Create or retrieve customer.
+            customer = await self.get_or_create_customer(
+                call_data,
+                full_phone_number,
+            )
 
         # # -----------------------------------------
         # # 6. Trigger Plivo

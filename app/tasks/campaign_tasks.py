@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 
 from celery import shared_task
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, case, exists
 
 from app.db.database import CeleryAsyncSessionLocal
 from app.db.models.campaign import Campaign
@@ -83,20 +83,64 @@ async def _process_campaign_queue():
         # Find campaigns ready for processing.
         # IN_PROGRESS campaigns are included so remaining contacts
         # can be enqueued in subsequent batches.
+
+        # result = await db.execute(
+        #     select(Campaign)
+        #     .where(
+        #         or_(
+        #             Campaign.status == Campaign.StatusChoices.QUEUED,
+        #             and_(
+        #                 Campaign.status == Campaign.StatusChoices.SCHEDULED,
+        #                 Campaign.schedule_type == Campaign.ScheduleChoices.SCHEDULED,
+        #                 Campaign.scheduled_at <= now,
+        #             ),
+        #             Campaign.status == Campaign.StatusChoices.IN_PROGRESS,
+        #         )
+        #     )
+        #     .order_by(
+        #         Campaign.scheduled_at.asc().nulls_first(),
+        #         Campaign.id.asc(),
+        #     )
+        #     .limit(CAMPAIGN_BATCH_SIZE)
+        #     .with_for_update(skip_locked=True)
+        # )
+
+        # campaigns = result.scalars().all()
+
+        # New query to prioritize campaigns with pending contacts
+        pending_contacts_exist = exists(
+            select(1).where(
+                CampaignContact.campaign_id == Campaign.id,
+                CampaignContact.status == CampaignContact.StatusChoices.PENDING,
+            )
+        )
+
         result = await db.execute(
             select(Campaign)
             .where(
                 or_(
+                    # Process NOW campaigns first
                     Campaign.status == Campaign.StatusChoices.QUEUED,
+                    # Process scheduled campaigns when their time arrives
                     and_(
                         Campaign.status == Campaign.StatusChoices.SCHEDULED,
                         Campaign.schedule_type == Campaign.ScheduleChoices.SCHEDULED,
                         Campaign.scheduled_at <= now,
                     ),
-                    Campaign.status == Campaign.StatusChoices.IN_PROGRESS,
+                    # Continue an IN_PROGRESS campaign only if it has
+                    # contacts still waiting to be queued.
+                    and_(
+                        Campaign.status == Campaign.StatusChoices.IN_PROGRESS,
+                        pending_contacts_exist,
+                    ),
                 )
             )
             .order_by(
+                case(
+                    (Campaign.status == Campaign.StatusChoices.QUEUED, 0),
+                    (Campaign.status == Campaign.StatusChoices.SCHEDULED, 1),
+                    else_=2,
+                ),
                 Campaign.scheduled_at.asc().nulls_first(),
                 Campaign.id.asc(),
             )
@@ -205,3 +249,158 @@ def process_campaign_queue():
     """
 
     return asyncio.run(_process_campaign_queue())
+
+
+async def _sync_campaign_call_status(
+    call_log_id: int,
+    final_status: str,
+):
+    now = datetime.now(timezone.utc)
+
+    if final_status not in {"completed", "failed"}:
+        raise ValueError(f"Unsupported final status: {final_status}")
+
+    async with CeleryAsyncSessionLocal() as db:
+
+        # Lock the queue record to avoid duplicate webhook processing.
+        result = await db.execute(
+            select(VoiceCallQueue)
+            .where(VoiceCallQueue.voice_call_log_id == call_log_id)
+            .with_for_update()
+        )
+        queue_item = result.scalar_one_or_none()
+
+        if not queue_item:
+            return {
+                "success": False,
+                "message": "VoiceCallQueue record not found.",
+                "call_log_id": call_log_id,
+            }
+
+        # A repeated webhook must not process the same call again.
+        if queue_item.status in {
+            VoiceCallQueue.StatusChoices.COMPLETED,
+            VoiceCallQueue.StatusChoices.FAILED,
+        }:
+            return {
+                "success": True,
+                "message": "Queue record already finalized.",
+                "queue_id": queue_item.id,
+            }
+
+        queue_item.status = (
+            VoiceCallQueue.StatusChoices.COMPLETED
+            if final_status == "completed"
+            else VoiceCallQueue.StatusChoices.FAILED
+        )
+        queue_item.completed_at = now
+
+        # Quick calls and non-campaign queue records stop here.
+        if not queue_item.campaign_id:
+            await db.commit()
+            return {
+                "success": True,
+                "message": "Queue status updated. No campaign linked.",
+                "queue_id": queue_item.id,
+            }
+
+        campaign_id = queue_item.campaign_id
+
+        # Update the corresponding campaign contact.
+        result = await db.execute(
+            select(CampaignContact)
+            .where(
+                CampaignContact.campaign_id == campaign_id,
+                CampaignContact.customer_id == queue_item.customer_id,
+            )
+            .with_for_update()
+        )
+        campaign_contact = result.scalar_one_or_none()
+
+        if campaign_contact:
+            campaign_contact.status = (
+                CampaignContact.StatusChoices.COMPLETED
+                if final_status == "completed"
+                else CampaignContact.StatusChoices.FAILED
+            )
+
+        # Lock campaign while recalculating its counters.
+        campaign = await db.get(
+            Campaign,
+            campaign_id,
+            with_for_update=True,
+        )
+
+        if not campaign:
+            await db.commit()
+            return {
+                "success": True,
+                "message": "Call statuses updated. Campaign not found.",
+                "queue_id": queue_item.id,
+            }
+
+        # Recalculate counters from contact statuses.
+        result = await db.execute(
+            select(CampaignContact).where(CampaignContact.campaign_id == campaign_id)
+        )
+        contacts = result.scalars().all()
+
+        completed_count = sum(
+            contact.status == CampaignContact.StatusChoices.COMPLETED
+            for contact in contacts
+        )
+
+        failed_count = sum(
+            contact.status == CampaignContact.StatusChoices.FAILED
+            for contact in contacts
+        )
+
+        terminal_statuses = {
+            CampaignContact.StatusChoices.COMPLETED,
+            CampaignContact.StatusChoices.FAILED,
+            CampaignContact.StatusChoices.SKIPPED,
+        }
+
+        all_finished = bool(contacts) and all(
+            contact.status in terminal_statuses for contact in contacts
+        )
+
+        campaign.completed_count = completed_count
+        campaign.failed_count = failed_count
+
+        if all_finished:
+            campaign.status = (
+                Campaign.StatusChoices.COMPLETED
+                if completed_count > 0
+                or any(
+                    contact.status == CampaignContact.StatusChoices.SKIPPED
+                    for contact in contacts
+                )
+                else Campaign.StatusChoices.FAILED
+            )
+            campaign.completed_at = now
+
+        await db.commit()
+
+        return {
+            "success": True,
+            "queue_id": queue_item.id,
+            "campaign_id": campaign_id,
+            "final_status": final_status,
+            "completed_count": completed_count,
+            "failed_count": failed_count,
+            "campaign_status": campaign.status,
+        }
+
+
+@shared_task(name="app.tasks.campaign_tasks.sync_campaign_call_status")
+def sync_campaign_call_status(
+    call_log_id: int,
+    final_status: str,
+):
+    return asyncio.run(
+        _sync_campaign_call_status(
+            call_log_id=call_log_id,
+            final_status=final_status,
+        )
+    )
