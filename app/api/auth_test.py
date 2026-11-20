@@ -17,6 +17,8 @@ async def get_me(
     return {
         "success": True,
         "user_id": current_user.id,
+        "auth_user_id": current_user.auth_user_id,
         "email": current_user.email,
         "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
     }

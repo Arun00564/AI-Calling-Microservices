@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from app.api.auth_test import router as auth_test_router
-from app.api.routes import customer_lists
+
+# from app.api.routes import customer_lists
 from app.api.routes.voice_call import router as voice_call_router
 from app.api.routes.plivo_webhook import router as plivo_webhook_router
 from app.api.routes.test_tasks import router as test_tasks_router
